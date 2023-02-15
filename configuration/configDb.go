@@ -7,7 +7,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-func ConnectDb() {
+func ConnectDb() (*sql.DB, error) {
 	var db *sql.DB
 	var errConnect error
 
@@ -19,5 +19,8 @@ func ConnectDb() {
 	errPing := db.Ping()
 	if errPing != nil {
 		log.Fatal("Error to Ping in database: ", errPing.Error())
+		return nil, errPing
 	}
+
+	return db, nil
 }
