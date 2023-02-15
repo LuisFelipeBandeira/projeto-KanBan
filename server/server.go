@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -42,5 +43,25 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	statement.Exec(card.Title, card.Desc)
+	defer statement.Close()
+
+	resultInsert, errInsert := statement.Exec(card.Title, card.Desc)
+	if errInsert != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error to do insert in database"))
+		return
+	}
+
+	idInsert, errResult := resultInsert.LastInsertId()
+	if errResult != nil {
+		fmt.Println(errResult.Error())
+	}
+
+	w.Write([]byte("ID inserido: " + fmt.Sprintf("%f", idInsert)))
+	w.WriteHeader(200)
+}
+
+func ListCards(w http.ResponseWriter, r *http.Request) {
+	//var card model.Card
+
 }

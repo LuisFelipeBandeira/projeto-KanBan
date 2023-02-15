@@ -8,7 +8,7 @@ import (
 	"github.com/projeto-BackEnd/controller/routes"
 )
 
-func main() {
+func main1() {
 	configuration.ConnectDb()
 
 	router := mux.NewRouter()
