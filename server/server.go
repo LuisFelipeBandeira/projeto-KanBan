@@ -156,3 +156,52 @@ func DeleteCard(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Task not found"))
 	}
 }
+
+func ListCardUsingId(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	variables := mux.Vars(r)
+	ID, err := strconv.ParseInt(variables["cardid"], 10, 32)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error to GET Id"))
+		return
+	}
+
+	db, errConnect := configuration.ConnectDb()
+	if errConnect != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error to ping in database"))
+		return
+	}
+
+	defer db.Close()
+
+	resultSelect, errSelect := db.Query("SELECT * FROM cards WHERE Id = ?", ID)
+	if errSelect != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error to do query"))
+		return
+	}
+
+	defer resultSelect.Close()
+
+	var card model.Card
+
+	for resultSelect.Next() {
+		if erroScan := resultSelect.Scan(&card.Id, &card.Desc, &card.DateLimit, &card.HourLimit); erroScan != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Error to do Scan in database"))
+			return
+		}
+	}
+
+	w.WriteHeader(200)
+
+	errEncoder := json.NewEncoder(w).Encode(card)
+	if errEncoder != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error to return json"))
+		return
+	}
+}
