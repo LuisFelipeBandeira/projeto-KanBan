@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -8,12 +9,13 @@ import (
 	"github.com/projeto-BackEnd/controller/routes"
 )
 
-func main1() {
+func main() {
 	configuration.ConnectDb()
 
 	router := mux.NewRouter()
 
 	routes.SetRoutes(router)
 
+	fmt.Println("Listening in port :8080")
 	http.ListenAndServe(":8080", router)
 }
