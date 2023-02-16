@@ -6,7 +6,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/projeto-BackEnd/configuration"
-	"github.com/projeto-BackEnd/controller/routes"
+	"github.com/projeto-BackEnd/routes"
 )
 
 func main() {
