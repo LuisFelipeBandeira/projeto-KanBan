@@ -10,4 +10,5 @@ func SetRoutes(mux *mux.Router) {
 	mux.HandleFunc("/cards", controller.ListCards).Methods("GET")
 	mux.HandleFunc("/cards/{cardid}", controller.DeleteCard).Methods("DELETE")
 	mux.HandleFunc("/card/{cardid}", controller.ListCardUsingId).Methods("GET")
+	mux.HandleFunc("/card/{cardid}", controller.FinishCard).Methods("PUT")
 }

@@ -205,3 +205,45 @@ func ListCardUsingId(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func FinishCard(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	variables := mux.Vars(r)
+	ID, errConvertId := strconv.ParseInt(variables["cardid"], 10, 32)
+	if errConvertId != nil {
+		w.WriteHeader(400)
+		w.Write([]byte("Error to convert ID"))
+		return
+	}
+
+	DB, errToConnectDatabase := configuration.ConnectDb()
+	if errToConnectDatabase != nil {
+		w.WriteHeader(500)
+		w.Write([]byte("Error connecting to DataBase"))
+		return
+	}
+
+	defer DB.Close()
+
+	var qtdLine int
+
+	DB.QueryRow("SELECT Count(*) FROM cards WHERE ID = ?", ID).Scan(&qtdLine)
+
+	if qtdLine == 1 {
+		_, errUpdate := DB.Query("UPDATE cards SET finished = 1 WHERE Id = ?", ID)
+		if errUpdate != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("Error to do UPDATE"))
+			return
+		}
+
+		w.WriteHeader(200)
+		return
+
+	} else {
+		w.WriteHeader(404)
+		w.Write([]byte("Card not found"))
+	}
+
+}
