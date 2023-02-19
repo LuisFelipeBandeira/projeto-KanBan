@@ -10,10 +10,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/projeto-BackEnd/configuration"
 	"github.com/projeto-BackEnd/model"
+	"github.com/projeto-BackEnd/security"
 )
 
 func CreateCard(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -21,13 +21,17 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var card model.Card
+	var card *model.Card
 
 	errUnmarshal := json.Unmarshal(body, &card)
 	if errUnmarshal != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to do Unmarshal"))
 		return
+	}
+
+	if card.Company != "Q2BANK" && card.Company != "Q2PAY" && card.Company != "Q2INGRESSOS" {
+		card.Company = "Q2PAY"
 	}
 
 	Db, errConnect := configuration.ConnectDb()
@@ -39,7 +43,7 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 
 	defer Db.Close()
 
-	statement, errPrepare := Db.Prepare("Insert into cards (Description, DateLimit, HourLimit) Values (?, ?, ?)")
+	statement, errPrepare := Db.Prepare("Insert into cards (Company, Description, DateLimit, HourLimit) Values (?, ?, ?, ?)")
 	if errPrepare != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to do prepare of insert"))
@@ -48,7 +52,7 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 
 	defer statement.Close()
 
-	resultInsert, errInsert := statement.Exec(card.Desc, card.DateLimit, card.HourLimit)
+	resultInsert, errInsert := statement.Exec(card.Company, card.Desc, card.DateLimit, card.HourLimit)
 	if errInsert != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to do insert in database"))
@@ -61,11 +65,10 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write([]byte("Task inserida"))
-	w.WriteHeader(200)
+	w.WriteHeader(http.StatusCreated)
 }
 
 func ListCards(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	db, err := configuration.ConnectDb()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -75,7 +78,7 @@ func ListCards(w http.ResponseWriter, r *http.Request) {
 
 	defer db.Close()
 
-	resultSelect, errSelect := db.Query("SELECT * FROM cards")
+	resultSelect, errSelect := db.Query("SELECT Id, Company, Description, DateLimit, HourLimit FROM cards")
 	if errSelect != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to do query"))
@@ -89,7 +92,7 @@ func ListCards(w http.ResponseWriter, r *http.Request) {
 	for resultSelect.Next() {
 		var card model.Card
 
-		if erroScan := resultSelect.Scan(&card.Id, &card.Desc, &card.DateLimit, &card.HourLimit); erroScan != nil {
+		if erroScan := resultSelect.Scan(&card.Id, &card.Company, &card.Desc, &card.DateLimit, &card.HourLimit); erroScan != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error to do Scan in database"))
 			return
@@ -109,7 +112,6 @@ func ListCards(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteCard(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	params := mux.Vars(r)
 
 	ID, errGetId := strconv.ParseInt(params["cardid"], 10, 32)
@@ -158,8 +160,6 @@ func DeleteCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListCardUsingId(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	variables := mux.Vars(r)
 	ID, err := strconv.ParseInt(variables["cardid"], 10, 32)
 	if err != nil {
@@ -189,7 +189,7 @@ func ListCardUsingId(w http.ResponseWriter, r *http.Request) {
 	var card model.Card
 
 	for resultSelect.Next() {
-		if erroScan := resultSelect.Scan(&card.Id, &card.Desc, &card.DateLimit, &card.HourLimit); erroScan != nil {
+		if erroScan := resultSelect.Scan(&card.Id, &card.Company, &card.Desc, &card.DateLimit, &card.HourLimit); erroScan != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Error to do Scan in database"))
 			return
@@ -207,8 +207,6 @@ func ListCardUsingId(w http.ResponseWriter, r *http.Request) {
 }
 
 func FinishCard(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	variables := mux.Vars(r)
 	ID, errConvertId := strconv.ParseInt(variables["cardid"], 10, 32)
 	if errConvertId != nil {
@@ -244,6 +242,134 @@ func FinishCard(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(404)
 		w.Write([]byte("Card not found"))
+	}
+}
+
+func InsertUser(w http.ResponseWriter, r *http.Request) {
+	body, errGetBody := io.ReadAll(r.Body)
+	if errGetBody != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	var user *model.User
+
+	errUnmarshal := json.Unmarshal(body, &user)
+	if errUnmarshal != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	errPrepare := user.Prepare()
+	if errPrepare != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(errPrepare.Error()))
+		return
+	}
+
+	DB, errConectDB := configuration.ConnectDb()
+	if errConectDB != nil {
+		w.WriteHeader(500)
+		w.Write([]byte(errConectDB.Error()))
+		return
+	}
+
+	defer DB.Close()
+
+	var resultCount int
+
+	DB.QueryRow("SELECT Count(*) FROM users WHERE username = ?", user.Username).Scan(&resultCount)
+
+	if resultCount != 0 {
+		w.WriteHeader(400)
+		w.Write([]byte("Usuário já existe."))
+		return
+	} else {
+		passwordHashed, errHash := security.HashPassword(user.Password)
+		if errHash != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("Error to hash password: " + errHash.Error()))
+		}
+
+		user.Password = string(passwordHashed)
+
+		prepare, errPrepareInsert := DB.Prepare("Insert INTO users (name, username, password) Values (?, ?, ?)")
+		if errPrepareInsert != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(errPrepareInsert.Error()))
+			return
+		}
+
+		defer prepare.Close()
+
+		_, errExecPrepare := prepare.Exec(user.Nome, user.Username, user.Password)
+		if errExecPrepare != nil {
+			w.WriteHeader(500)
+			w.Write([]byte(errExecPrepare.Error()))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(user)
+		return
+	}
+}
+
+func Login(w http.ResponseWriter, r *http.Request) {
+	body, errGetUser := io.ReadAll(r.Body)
+	if errGetUser != nil {
+		w.WriteHeader(400)
+		w.Write([]byte(errGetUser.Error()))
+		return
+	}
+
+	var user *model.User
+
+	errUnmarshal := json.Unmarshal(body, &user)
+	if errUnmarshal != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error to do Unmarshal"))
+		return
+	}
+
+	db, errConnectDB := configuration.ConnectDb()
+	if errConnectDB != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error to ping in database"))
+		return
+	}
+
+	defer db.Close()
+
+	var resultCount int
+
+	db.QueryRow("SELECT Count(*) From users Where username = ?", user.Username).Scan(&resultCount)
+
+	if resultCount != 1 {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("User not found"))
+		return
+	} else {
+		var userDB model.User
+
+		db.QueryRow("SELECT Id, password FROM users WHERE username = ?", user.Username).Scan(&userDB.Id, &userDB.Password)
+
+		errComparePassword := security.VerificationPasswordAndHash(user.Password, userDB.Password)
+		if errComparePassword != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Username or password's invalid"))
+			return
+		}
+
+		tokenLogin, errToGenerateToken := security.GenerateJsonWebToken(userDB.Id)
+		if errToGenerateToken != nil {
+			w.WriteHeader(500)
+			w.Write([]byte("Error to do login: Error to generate Json Web Token"))
+			w.Write([]byte(errToGenerateToken.Error()))
+			return
+		}
+		w.WriteHeader(200)
+		json.NewEncoder(w).Encode(tokenLogin)
+		return
 	}
 
 }
