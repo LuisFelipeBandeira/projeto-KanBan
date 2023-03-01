@@ -10,12 +10,13 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/projeto-BackEnd/configuration"
 	"github.com/projeto-BackEnd/model"
+	"github.com/projeto-BackEnd/repository"
 	"github.com/projeto-BackEnd/security"
 )
 
 func CreateCard(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
+	body, errBody := io.ReadAll(r.Body)
+	if errBody != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to get requisition's body"))
 		return
@@ -34,38 +35,15 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 		card.Company = "Q2PAY"
 	}
 
-	Db, errConnect := configuration.ConnectDb()
-	if errConnect != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to ping in database"))
+	err := repository.InsertCard(card.Company, card.Desc, card.DateLimit, card.HourLimit)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(err.Error())
 		return
 	}
 
-	defer Db.Close()
-
-	statement, errPrepare := Db.Prepare("Insert into cards (Company, Description, DateLimit, HourLimit) Values (?, ?, ?, ?)")
-	if errPrepare != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to do prepare of insert"))
-		return
-	}
-
-	defer statement.Close()
-
-	resultInsert, errInsert := statement.Exec(card.Company, card.Desc, card.DateLimit, card.HourLimit)
-	if errInsert != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to do insert in database"))
-		return
-	}
-
-	_, errResult := resultInsert.LastInsertId()
-	if errResult != nil {
-		fmt.Println(errResult.Error())
-	}
-
-	w.Write([]byte("Task inserida"))
-	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode("Task inserida")
+	w.WriteHeader(200)
 }
 
 func ListCards(w http.ResponseWriter, r *http.Request) {
@@ -122,40 +100,27 @@ func DeleteCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, errConnectDB := configuration.ConnectDb()
-	if errConnectDB != nil {
+	resultCount, errConnect := repository.UserExist(int(ID))
+	if errConnect != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to ping in database"))
 		return
 	}
 
-	defer db.Close()
-
-	var resultCount int
-
-	db.QueryRow("SELECT COUNT(*) FROM cards WHERE Id = ?", ID).Scan(&resultCount)
-
 	if resultCount == 1 {
-		statementDelete, errPrepare := db.Prepare("DELETE FROM cards WHERE Id = ?")
-		if errPrepare != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Error to do prepare of delete"))
-			return
-		}
-
-		defer statementDelete.Close()
-
-		_, errDelete := statementDelete.Exec(ID)
+		errDelete := repository.DeleteCard(int(ID))
 		if errDelete != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Error to do delete"))
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(errDelete.Error())
 			return
 		}
 
 		w.WriteHeader(200)
+		return
 	} else {
-		w.WriteHeader(204)
-		w.Write([]byte("Task not found"))
+		w.WriteHeader(http.StatusNoContent)
+		json.NewEncoder(w).Encode("Card not found")
+		return
 	}
 }
 
