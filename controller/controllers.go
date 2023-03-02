@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
-	"github.com/projeto-BackEnd/configuration"
 	"github.com/projeto-BackEnd/model"
 	"github.com/projeto-BackEnd/repository"
 	"github.com/projeto-BackEnd/security"
@@ -18,7 +17,7 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 	body, errBody := io.ReadAll(r.Body)
 	if errBody != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to get requisition's body"))
+		json.NewEncoder(w).Encode("Error to get requisition's body")
 		return
 	}
 
@@ -27,7 +26,7 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 	errUnmarshal := json.Unmarshal(body, &card)
 	if errUnmarshal != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to do Unmarshal"))
+		json.NewEncoder(w).Encode("Error to do Unmarshal")
 		return
 	}
 
@@ -51,7 +50,7 @@ func ListCards(w http.ResponseWriter, r *http.Request) {
 	resultSelect, errSelect := repository.ListCards()
 	if errSelect != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to do query"))
+		json.NewEncoder(w).Encode("Error to do query")
 		return
 	}
 
@@ -62,7 +61,7 @@ func ListCards(w http.ResponseWriter, r *http.Request) {
 
 		if erroScan := resultSelect.Scan(&card.Id, &card.Company, &card.Desc, &card.DateLimit, &card.HourLimit); erroScan != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Error to do Scan in database"))
+			json.NewEncoder(w).Encode("Error to do Scan in database")
 			return
 		}
 
@@ -74,7 +73,7 @@ func ListCards(w http.ResponseWriter, r *http.Request) {
 	errEncoder := json.NewEncoder(w).Encode(cards)
 	if errEncoder != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to return json"))
+		json.NewEncoder(w).Encode("Error to return json")
 		return
 	}
 }
@@ -85,7 +84,7 @@ func DeleteCard(w http.ResponseWriter, r *http.Request) {
 	ID, errGetId := strconv.ParseInt(params["cardid"], 10, 32)
 	if errGetId != nil {
 		w.WriteHeader(500)
-		w.Write([]byte("Error to get ID"))
+		json.NewEncoder(w).Encode("Error to get ID")
 		fmt.Println("Error to get ID: ", errGetId.Error())
 		return
 	}
@@ -93,7 +92,7 @@ func DeleteCard(w http.ResponseWriter, r *http.Request) {
 	resultCount, errConnect := repository.CardExist(int(ID))
 	if errConnect != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to ping in database"))
+		json.NewEncoder(w).Encode("Error to ping in database")
 		return
 	}
 
@@ -229,7 +228,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	body, errGetUser := io.ReadAll(r.Body)
 	if errGetUser != nil {
 		w.WriteHeader(400)
-		w.Write([]byte(errGetUser.Error()))
+		json.NewEncoder(w).Encode(errGetUser.Error())
 		return
 	}
 
@@ -238,44 +237,45 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	errUnmarshal := json.Unmarshal(body, &user)
 	if errUnmarshal != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to do Unmarshal"))
+		json.NewEncoder(w).Encode("Error to do Unmarshal")
 		return
 	}
 
-	db, errConnectDB := configuration.ConnectDb()
-	if errConnectDB != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to ping in database"))
+	resultCount, errVerificUser := repository.UserExist(user.Username)
+	if errVerificUser != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errVerificUser.Error())
 		return
 	}
-
-	defer db.Close()
-
-	var resultCount int
-
-	db.QueryRow("SELECT Count(*) From users Where username = ?", user.Username).Scan(&resultCount)
 
 	if resultCount != 1 {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("User not found"))
+		json.NewEncoder(w).Encode("User not found")
 		return
 	} else {
 		var userDB model.User
 
-		db.QueryRow("SELECT Id, password FROM users WHERE username = ?", user.Username).Scan(&userDB.Id, &userDB.Password)
+		resultSelect, errLogin := repository.Login(user.Username)
+		if errLogin != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(errLogin.Error())
+			return
+		}
+
+		resultSelect.Scan(&userDB.Id, &userDB.Password)
 
 		errComparePassword := security.VerificationPasswordAndHash(user.Password, userDB.Password)
 		if errComparePassword != nil {
 			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("Username or password's invalid"))
+			json.NewEncoder(w).Encode("Username or password's invalid")
 			return
 		}
 
 		tokenLogin, errToGenerateToken := security.GenerateJsonWebToken(userDB.Id)
 		if errToGenerateToken != nil {
 			w.WriteHeader(500)
-			w.Write([]byte("Error to do login: Error to generate Json Web Token"))
-			w.Write([]byte(errToGenerateToken.Error()))
+			json.NewEncoder(w).Encode("Error to do login: Error to generate Json Web Token")
+			json.NewEncoder(w).Encode(errToGenerateToken.Error())
 			return
 		}
 		w.WriteHeader(200)

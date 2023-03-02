@@ -96,8 +96,6 @@ func ListCards() (*sql.Rows, error) {
 		return nil, errSelect
 	}
 
-	defer resultSelect.Close()
-
 	return resultSelect, nil
 }
 
@@ -113,8 +111,6 @@ func ListOneCard(id int) (*sql.Rows, error) {
 	if errSelect != nil {
 		return nil, errSelect
 	}
-
-	defer resultSelect.Close()
 
 	return resultSelect, nil
 }
@@ -162,4 +158,17 @@ func InsertUser(nome, username, password string) error {
 	}
 
 	return nil
+}
+
+func Login(username string) (*sql.Row, error) {
+	db, errConnectDB := configuration.ConnectDb()
+	if errConnectDB != nil {
+		return nil, errConnectDB
+	}
+
+	defer db.Close()
+
+	result := db.QueryRow("SELECT Id, password FROM users WHERE username = ?", username)
+
+	return result, nil
 }
