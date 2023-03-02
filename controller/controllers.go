@@ -47,23 +47,13 @@ func CreateCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListCards(w http.ResponseWriter, r *http.Request) {
-	db, err := configuration.ConnectDb()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to ping in database"))
-		return
-	}
 
-	defer db.Close()
-
-	resultSelect, errSelect := db.Query("SELECT Id, Company, Description, DateLimit, HourLimit FROM cards")
+	resultSelect, errSelect := repository.ListCards()
 	if errSelect != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to do query"))
 		return
 	}
-
-	defer resultSelect.Close()
 
 	var cards []model.Card
 
@@ -100,7 +90,7 @@ func DeleteCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resultCount, errConnect := repository.UserExist(int(ID))
+	resultCount, errConnect := repository.CardExist(int(ID))
 	if errConnect != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Error to ping in database"))
@@ -129,44 +119,32 @@ func ListCardUsingId(w http.ResponseWriter, r *http.Request) {
 	ID, err := strconv.ParseInt(variables["cardid"], 10, 32)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to GET Id"))
+		json.NewEncoder(w).Encode("Error to GET Id")
 		return
 	}
-
-	db, errConnect := configuration.ConnectDb()
-	if errConnect != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to ping in database"))
-		return
-	}
-
-	defer db.Close()
-
-	resultSelect, errSelect := db.Query("SELECT * FROM cards WHERE Id = ?", ID)
-	if errSelect != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to do query"))
-		return
-	}
-
-	defer resultSelect.Close()
 
 	var card model.Card
+
+	resultSelect, errSelect := repository.ListOneCard(int(ID))
+	if errSelect != nil {
+		w.WriteHeader(500)
+		json.NewEncoder(w).Encode("Error to do Select")
+		return
+	}
 
 	for resultSelect.Next() {
 		if erroScan := resultSelect.Scan(&card.Id, &card.Company, &card.Desc, &card.DateLimit, &card.HourLimit); erroScan != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Error to do Scan in database"))
+			json.NewEncoder(w).Encode("Error to do Scan of select's result")
 			return
 		}
 	}
 
 	w.WriteHeader(200)
-
 	errEncoder := json.NewEncoder(w).Encode(card)
 	if errEncoder != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error to return json"))
+		json.NewEncoder(w).Encode("Error to return json")
 		return
 	}
 }
@@ -176,37 +154,28 @@ func FinishCard(w http.ResponseWriter, r *http.Request) {
 	ID, errConvertId := strconv.ParseInt(variables["cardid"], 10, 32)
 	if errConvertId != nil {
 		w.WriteHeader(400)
-		w.Write([]byte("Error to convert ID"))
+		json.NewEncoder(w).Encode("Error to convert ID")
 		return
 	}
 
-	DB, errToConnectDatabase := configuration.ConnectDb()
-	if errToConnectDatabase != nil {
-		w.WriteHeader(500)
-		w.Write([]byte("Error connecting to DataBase"))
+	qtdLine, err := repository.CardExist(int(ID))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(err.Error())
 		return
 	}
-
-	defer DB.Close()
-
-	var qtdLine int
-
-	DB.QueryRow("SELECT Count(*) FROM cards WHERE ID = ?", ID).Scan(&qtdLine)
 
 	if qtdLine == 1 {
-		_, errUpdate := DB.Query("UPDATE cards SET finished = 1 WHERE Id = ?", ID)
+		errUpdate := repository.FinishCard(int(ID))
 		if errUpdate != nil {
-			w.WriteHeader(500)
-			w.Write([]byte("Error to do UPDATE"))
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(errUpdate.Error())
 			return
 		}
-
-		w.WriteHeader(200)
-		return
-
 	} else {
 		w.WriteHeader(404)
-		w.Write([]byte("Card not found"))
+		json.NewEncoder(w).Encode("Card not found")
+		return
 	}
 }
 
@@ -228,49 +197,26 @@ func InsertUser(w http.ResponseWriter, r *http.Request) {
 	errPrepare := user.Prepare()
 	if errPrepare != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(errPrepare.Error()))
+		json.NewEncoder(w).Encode(errPrepare.Error())
 		return
 	}
 
-	DB, errConectDB := configuration.ConnectDb()
-	if errConectDB != nil {
-		w.WriteHeader(500)
-		w.Write([]byte(errConectDB.Error()))
+	resultCount, errValidUser := repository.UserExist(user.Username)
+	if errValidUser != nil {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(errValidUser.Error())
 		return
 	}
-
-	defer DB.Close()
-
-	var resultCount int
-
-	DB.QueryRow("SELECT Count(*) FROM users WHERE username = ?", user.Username).Scan(&resultCount)
 
 	if resultCount != 0 {
 		w.WriteHeader(400)
-		w.Write([]byte("Usuário já existe."))
+		json.NewEncoder(w).Encode("Usuário existente.")
 		return
 	} else {
-		passwordHashed, errHash := security.HashPassword(user.Password)
-		if errHash != nil {
-			w.WriteHeader(500)
-			w.Write([]byte("Error to hash password: " + errHash.Error()))
-		}
-
-		user.Password = string(passwordHashed)
-
-		prepare, errPrepareInsert := DB.Prepare("Insert INTO users (name, username, password) Values (?, ?, ?)")
-		if errPrepareInsert != nil {
-			w.WriteHeader(500)
-			w.Write([]byte(errPrepareInsert.Error()))
-			return
-		}
-
-		defer prepare.Close()
-
-		_, errExecPrepare := prepare.Exec(user.Nome, user.Username, user.Password)
-		if errExecPrepare != nil {
-			w.WriteHeader(500)
-			w.Write([]byte(errExecPrepare.Error()))
+		errInsert := repository.InsertUser(user.Nome, user.Username, user.Password)
+		if errInsert != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(errInsert.Error())
 			return
 		}
 		w.WriteHeader(http.StatusCreated)

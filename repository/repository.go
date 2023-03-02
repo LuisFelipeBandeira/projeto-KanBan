@@ -1,7 +1,10 @@
 package repository
 
 import (
+	"database/sql"
+
 	"github.com/projeto-BackEnd/configuration"
+	"github.com/projeto-BackEnd/security"
 )
 
 func InsertCard(company, description, dateLimit, hourLimit string) error {
@@ -50,7 +53,22 @@ func DeleteCard(cardId int) error {
 	return nil
 }
 
-func UserExist(id int) (int, error) {
+func UserExist(userName string) (int, error) {
+	db, errConnectDB := configuration.ConnectDb()
+	if errConnectDB != nil {
+		return 0, errConnectDB
+	}
+
+	defer db.Close()
+
+	var resultCount int
+
+	db.QueryRow("SELECT Count(*) FROM users WHERE username = ?", userName).Scan(&resultCount)
+
+	return resultCount, nil
+}
+
+func CardExist(id int) (int, error) {
 	db, errConnectDB := configuration.ConnectDb()
 	if errConnectDB != nil {
 		return 0, errConnectDB
@@ -63,4 +81,85 @@ func UserExist(id int) (int, error) {
 	db.QueryRow("SELECT COUNT(*) FROM cards WHERE id = ?", id).Scan(&resultCount)
 
 	return resultCount, nil
+}
+
+func ListCards() (*sql.Rows, error) {
+	db, err := configuration.ConnectDb()
+	if err != nil {
+		return nil, err
+	}
+
+	defer db.Close()
+
+	resultSelect, errSelect := db.Query("SELECT Id, Company, Description, DateLimit, HourLimit FROM cards")
+	if errSelect != nil {
+		return nil, errSelect
+	}
+
+	defer resultSelect.Close()
+
+	return resultSelect, nil
+}
+
+func ListOneCard(id int) (*sql.Rows, error) {
+	db, errConnect := configuration.ConnectDb()
+	if errConnect != nil {
+		return nil, errConnect
+	}
+
+	defer db.Close()
+
+	resultSelect, errSelect := db.Query("SELECT * FROM cards WHERE Id = ?", id)
+	if errSelect != nil {
+		return nil, errSelect
+	}
+
+	defer resultSelect.Close()
+
+	return resultSelect, nil
+}
+
+func FinishCard(id int) error {
+	DB, errToConnectDatabase := configuration.ConnectDb()
+	if errToConnectDatabase != nil {
+		return errToConnectDatabase
+	}
+
+	defer DB.Close()
+
+	_, errUpdate := DB.Query("UPDATE cards SET finished = 1 WHERE Id = ?", id)
+	if errUpdate != nil {
+		return errUpdate
+	}
+
+	return nil
+}
+
+func InsertUser(nome, username, password string) error {
+
+	db, errConnect := configuration.ConnectDb()
+	if errConnect != nil {
+		return errConnect
+	}
+
+	defer db.Close()
+
+	passwordHashed, errHash := security.HashPassword(password)
+	if errHash != nil {
+		return errHash
+	}
+
+	prepare, errPrepareInsert := db.Prepare("Insert INTO users (name, username, password) Values (?, ?, ?)")
+	if errPrepareInsert != nil {
+		return errPrepareInsert
+	}
+
+	defer prepare.Close()
+
+	_, errExecPrepare := prepare.Exec(nome, username, passwordHashed)
+	if errExecPrepare != nil {
+		return errExecPrepare
+	}
+
+	return nil
 }
